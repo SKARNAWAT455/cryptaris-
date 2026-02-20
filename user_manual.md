@@ -1,0 +1,67 @@
+# Cryptaris System Manual
+
+## Introduction
+Cryptaris is a high-performance, secure web application designed for advanced data privacy. It combines military-grade encryption with a "Modern Clean/Luxury Minimalist" aesthetic to provide a premium user experience. This manual describes the features and usage of the Cryptaris system.
+
+## Core Features
+
+### 1. Encryption & Decryption
+Cryptaris supports robust encryption for various data types. All encryption uses a dual-key system (User Key + System Key) to ensure maximum security.
+
+*   **Text Encryption**: Securely encrypt plain text messages.
+*   **File Encryption**: Encrypt documents, images, audio, and video files. The system supports a wide range of formats.
+*   **God Mode Security**: Files are locked to your specific system instance using unique markers, preventing unauthorized decryption even if the user key is stolen.
+
+**Usage:**
+1.  Navigate to the **Encrypt** page.
+2.  Select the type of data (Text, Document, Audio, Video, Image).
+3.  Upload your file or enter text.
+4.  Enter a strong password (User Key).
+5.  Click **Encrypt**. The system will generate a secured file or text block.
+
+To **Decrypt**, simply navigate to the **Decrypt** page, upload the encrypted file, and enter the original password.
+
+### 2. Steganography (Hide & Reveal)
+Steganography allows you to hide secret messages *inside* innocent-looking images.
+
+*   **Hide**: Upload a cover image and enter your secret message. The system embeds the message into the image code without visibly altering the picture.
+*   **Reveal**: Upload the image containing the secret message to extract the hidden text.
+
+### 3. Secure Link Generation
+Share sensitive information securely using time-bound links.
+
+*   **Create Link**: Enter your secret message. You can set an expiration time (e.g., 1 hour, 1 day) and an optional password.
+*   **Access Link**: The recipient clicks the link and (if required) enters the password to view the message. Once expired, the message is permanently destroyed.
+
+### 4. Decoy Generator
+Confuse potential attackers by generating fake, realistic-looking documents. This tool creates "honeyfiles" that look valuable but contain useless data.
+
+*   **Financial Reports**: Generates fake CSV files with realistic transaction data.
+*   **Corporate Directories**: Creates fake employee lists with names, roles, and departments.
+*   **Personal Diaries**: Generates fake personal text entries.
+
+**Usage:**
+1.  Navigate to **Tools > Decoy Generator**.
+2.  Select the type of decoy (Financial, Corporate, Personal).
+3.  Download the generated file and place it among your real files to mislead snoops.
+
+### 5. Password Analyzer
+Check the strength of your passwords before using them.
+*   The system analyzes entropy, dictionary words, and patterns.
+*   Provides a score (0-4) and estimated crack time.
+
+## Security Architecture (High Level)
+*   **Dual-Layer Encryption**: Data is protected by both your password and a hidden system key.
+*   **Client-Side Privacy**: Your passwords are never stored in plain text.
+*   **Ephemeral Storage**: Sensitive data in "Secure Links" is stored transiently and deleted upon expiration.
+
+## FAQ
+
+**Q: Can I recover my file if I lose my password?**
+A: No. Cryptaris does not store your passwords. If you lose your key, the data is irretrievably lost. This is a security feature, not a bug.
+
+**Q: Can I decrypt a file on a different computer?**
+A: By default, "God Mode" ties encryption to the specific system instance. You may need the System Master Key from the original machine to decrypt on a new device.
+
+**Q: Is the Decoy Generator data real?**
+A: No. All names, transactions, and entries are algorithmically generated using randomization.
