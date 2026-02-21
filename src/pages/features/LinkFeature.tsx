@@ -1,10 +1,11 @@
 import { useState } from "react";
-import { Link2, ExternalLink, Calendar, Copy, Check, Lock, Unlock, ArrowRight } from "lucide-react";
+import { Link2, ExternalLink, Calendar, Copy, Check, Lock, Unlock, ArrowRight, Upload, File, X } from "lucide-react";
 import FeatureLayout from "@/components/FeatureLayout";
 import FeatureInfo from "@/components/FeatureInfo";
 import SecurePasswordInput from "@/components/SecurePasswordInput";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import { createLink, accessLink } from "@/lib/api";
 
@@ -13,24 +14,43 @@ interface LinkFeatureProps {
 }
 
 const LinkFeature = ({ mode }: LinkFeatureProps) => {
+    const [shareType, setShareType] = useState<"text" | "file">("text");
     const [url, setUrl] = useState("");
+    const [file, setFile] = useState<File | null>(null);
     const [password, setPassword] = useState("");
-    const [expiry, setExpiry] = useState("1");
+    const [expiry, setExpiry] = useState("3600"); // seconds
+    const [customExpiry, setCustomExpiry] = useState(""); // minutes string
     const [generatedLink, setGeneratedLink] = useState("");
     const [isProcessing, setIsProcessing] = useState(false);
     const [copied, setCopied] = useState(false);
     const { toast } = useToast();
 
     const handleCreate = async () => {
-        if (!url) {
-            toast({ title: "URL Required", description: "Please enter a URL to secure.", variant: "destructive" });
+        if (shareType === "text" && !url) {
+            toast({ title: "Content Required", description: "Please enter a URL or text to secure.", variant: "destructive" });
             return;
+        }
+        if (shareType === "file" && !file) {
+            toast({ title: "File Required", description: "Please attach a file to secure.", variant: "destructive" });
+            return;
+        }
+
+        let finalExpirySecs = parseInt(expiry);
+        if (expiry === "custom") {
+            const mins = parseInt(customExpiry);
+            if (!mins || isNaN(mins) || mins <= 0) {
+                toast({ title: "Invalid Expiration", description: "Please enter a valid number of minutes.", variant: "destructive" });
+                return;
+            }
+            finalExpirySecs = mins * 60;
         }
 
         setIsProcessing(true);
         try {
-            const result = await createLink(url, password, expiry);
-            setGeneratedLink(result.link);
+            const passedUrl = shareType === "text" ? url : "";
+            const passedFile = shareType === "file" ? (file || undefined) : undefined;
+            const result = await createLink(passedUrl, password, finalExpirySecs.toString(), passedFile);
+            setGeneratedLink(result.full_url);
             toast({ title: "Secure Link Created", description: "Your link is ready to share." });
         } catch (error: any) {
             toast({ title: "Error", description: error.message, variant: "destructive" });
@@ -51,12 +71,42 @@ const LinkFeature = ({ mode }: LinkFeatureProps) => {
         setIsProcessing(true);
         try {
             const result = await accessLink(linkId, password); // password field in access mode
-            toast({ title: "Access Granted", description: "Redirecting..." });
-            setTimeout(() => window.location.href = result.url, 1000);
+
+            if (result.isFile) {
+                const downloadUrl = window.URL.createObjectURL(result.blob);
+                const a = document.createElement('a');
+                a.href = downloadUrl;
+                a.download = result.filename;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                window.URL.revokeObjectURL(downloadUrl);
+                toast({ title: "Access Granted", description: "File downloaded successfully." });
+            } else {
+                toast({ title: "Access Granted", description: "Redirecting..." });
+                // If it's a URL, attempt redirect. If text, show it somehow or just dump to body (simplified here to keep previous behavior)
+                // For a proper text renderer, you'd setstate the text. But assuming URLs for now.
+                setTimeout(() => {
+                    if (result.url.startsWith('http')) {
+                        window.location.href = result.url;
+                    } else {
+                        // Just display text hack if not url
+                        document.body.innerHTML = `<body><div style='padding:2rem; font-family:monospace; white-space:pre-wrap;'>${result.url}</div></body>`;
+                    }
+                }, 1000);
+            }
+
         } catch (error: any) {
-            toast({ title: "Access Denied", description: error.message, variant: "destructive" });
+            toast({ title: "Access Denied", description: error.message || "Invalid password or expired link.", variant: "destructive" });
         } finally {
             setIsProcessing(false);
+        }
+    };
+
+    const handleDrop = (e: React.DragEvent) => {
+        e.preventDefault();
+        if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+            setFile(e.dataTransfer.files[0]);
         }
     };
 
@@ -76,14 +126,58 @@ const LinkFeature = ({ mode }: LinkFeatureProps) => {
             <div className="max-w-xl mx-auto space-y-8 glass-card p-8">
                 {mode === "create" ? (
                     <>
-                        <div className="space-y-4">
-                            <label className="text-sm font-medium">Destination URL or Content</label>
-                            <Input
-                                placeholder="https://example.com/secret-document"
-                                value={url}
-                                onChange={(e) => setUrl(e.target.value)}
-                            />
-                        </div>
+                        <Tabs value={shareType} onValueChange={(v: any) => setShareType(v)} className="w-full">
+                            <TabsList className="grid w-full grid-cols-2 mb-6">
+                                <TabsTrigger value="text">Share Text / URL</TabsTrigger>
+                                <TabsTrigger value="file">Share File</TabsTrigger>
+                            </TabsList>
+                            <TabsContent value="text" className="space-y-4">
+                                <label className="text-sm font-medium">Destination URL or Secret Text</label>
+                                <Input
+                                    placeholder="https://example.com/ or 'My secret password is...'"
+                                    value={url}
+                                    onChange={(e) => setUrl(e.target.value)}
+                                />
+                            </TabsContent>
+                            <TabsContent value="file" className="space-y-4">
+                                <div
+                                    className="border-2 border-dashed border-input rounded-xl p-6 text-center hover:bg-muted/50 transition-colors cursor-pointer relative"
+                                    onDragOver={(e) => e.preventDefault()}
+                                    onDrop={handleDrop}
+                                    onClick={() => document.getElementById("link-file-upload")?.click()}
+                                >
+                                    {file && (
+                                        <button
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                setFile(null);
+                                            }}
+                                            className="absolute top-2 right-2 p-1 rounded-full hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors"
+                                        >
+                                            <X size={16} />
+                                        </button>
+                                    )}
+                                    <input
+                                        id="link-file-upload"
+                                        type="file"
+                                        className="hidden"
+                                        onChange={(e) => {
+                                            if (e.target.files && e.target.files[0]) setFile(e.target.files[0]);
+                                        }}
+                                    />
+                                    <div className="flex flex-col items-center gap-2">
+                                        <div className="p-3 rounded-full bg-primary/10 text-primary">
+                                            {file ? <File size={24} /> : <Upload size={24} />}
+                                        </div>
+                                        <div>
+                                            <h3 className="text-sm font-semibold">
+                                                {file ? file.name : "Drop file here or click to browse"}
+                                            </h3>
+                                        </div>
+                                    </div>
+                                </div>
+                            </TabsContent>
+                        </Tabs>
 
                         <div className="grid grid-cols-2 gap-4">
                             <div className="space-y-2">
@@ -97,18 +191,30 @@ const LinkFeature = ({ mode }: LinkFeatureProps) => {
 
                             <div className="space-y-2">
                                 <label className="text-sm font-medium">Expires In</label>
-                                <div className="relative">
-                                    <Calendar className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+                                <div className="space-y-2 relative">
+                                    <Calendar className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground z-10" />
                                     <select
                                         className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 pl-9 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
                                         value={expiry}
                                         onChange={(e) => setExpiry(e.target.value)}
                                     >
-                                        <option value="1">1 Hour</option>
-                                        <option value="24">24 Hours</option>
-                                        <option value="168">7 Days</option>
+                                        <option value="30">30 Seconds</option>
+                                        <option value="60">1 Minute</option>
+                                        <option value="300">5 Minutes</option>
+                                        <option value="3600">1 Hour</option>
+                                        <option value="86400">24 Hours</option>
                                         <option value="0">Never</option>
+                                        <option value="custom">Custom (Minutes)</option>
                                     </select>
+                                    {expiry === "custom" && (
+                                        <Input
+                                            type="number"
+                                            placeholder="Enter minutes..."
+                                            value={customExpiry}
+                                            onChange={(e) => setCustomExpiry(e.target.value)}
+                                            className="mt-2"
+                                        />
+                                    )}
                                 </div>
                             </div>
                         </div>

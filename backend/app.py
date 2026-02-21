@@ -11,13 +11,18 @@ import tempfile
 import shutil
 import base64
 import json
+import uuid
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
 from core.secure_links import link_manager
 from core.contact_manager import contact_manager
 
 app = Flask(__name__)
 # Load config from environment
-# Load config from environment
-app.config['SECRET_KEY'] = os.getenv('FLASK_SECRET_KEY', 'dev_key_change_in_production')
+app.config['SECRET_KEY'] = os.getenv('FLASK_SECRET_KEY', os.urandom(24))
+
+# Security: Limit maximum upload size to 16MB to prevent memory exhaustion DoS attacks
+app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024
 
 # CORS Configuration
 # Split by comma if present, otherwise default to ["*"]
@@ -29,6 +34,14 @@ else:
 
 # Initialize CORS with support for credentials and content-type headers
 CORS(app, resources={r"/api/*": {"origins": allowed_origins}}, supports_credentials=True)
+
+# Initialize Rate Limiting for Brute Force Protection
+limiter = Limiter(
+    get_remote_address,
+    app=app,
+    default_limits=["200 per day", "50 per hour"],
+    storage_uri="memory://"
+)
 
 UPLOAD_FOLDER = tempfile.gettempdir()
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
@@ -129,9 +142,10 @@ def encrypt_file():
             
         password = request.form.get('password', 'default-key')
         
-        # Save temp
+        # Save temp with UUID
+        unique_prefix = uuid.uuid4().hex
         filename = secure_filename(file.filename)
-        temp_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+        temp_path = os.path.join(app.config['UPLOAD_FOLDER'], f"{unique_prefix}_{filename}")
         file.save(temp_path)
         
         with open(temp_path, 'rb') as f:
@@ -146,7 +160,7 @@ def encrypt_file():
         layer2_blob = base64.b64decode(encrypted['ciphertext'])
         final_data = salt + layer2_blob
         
-        output_filename = f"{filename}.enc"
+        output_filename = f"{unique_prefix}_{filename}.enc"
         output_path = os.path.join(app.config['UPLOAD_FOLDER'], output_filename)
         
         with open(output_path, 'wb') as f:
@@ -171,9 +185,10 @@ def decrypt_file():
             
         password = request.form.get('password', 'default-key')
         
-        # Save temp
+        # Save temp with UUID to prevent race conditions
+        unique_prefix = uuid.uuid4().hex
         filename = secure_filename(file.filename)
-        temp_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+        temp_path = os.path.join(app.config['UPLOAD_FOLDER'], f"{unique_prefix}_{filename}")
         file.save(temp_path)
         
         with open(temp_path, 'rb') as f:
@@ -195,11 +210,13 @@ def decrypt_file():
         if original_filename == filename:
              original_filename = f"decrypted_{filename}"
              
-        output_path = os.path.join(app.config['UPLOAD_FOLDER'], original_filename)
+        output_filename = f"{unique_prefix}_{original_filename}"
+        output_path = os.path.join(app.config['UPLOAD_FOLDER'], output_filename)
+        
         with open(output_path, 'wb') as f:
             f.write(decrypted_bytes)
             
-        # Cleanup
+        # Cleanup input
         os.remove(temp_path)
         
         return send_file(output_path, as_attachment=True, download_name=original_filename)
@@ -226,11 +243,12 @@ def hide_message():
         else:
              message_to_hide = message
              
+        unique_prefix = uuid.uuid4().hex
         filename = secure_filename(image.filename)
-        temp_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+        temp_path = os.path.join(app.config['UPLOAD_FOLDER'], f"{unique_prefix}_{filename}")
         image.save(temp_path)
         
-        output_filename = f"stego_{filename.split('.')[0]}.png"
+        output_filename = f"stego_{unique_prefix}_{filename.split('.')[0]}.png"
         output_path = os.path.join(app.config['UPLOAD_FOLDER'], output_filename)
         
         hide_message_in_image(temp_path, message_to_hide, output_path)
@@ -247,9 +265,9 @@ def reveal_message():
         if 'image' not in request.files:
             return jsonify({'error': 'Image is required'}), 400
         image = request.files['image']
-        
+        unique_prefix = uuid.uuid4().hex
         filename = secure_filename(image.filename)
-        temp_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+        temp_path = os.path.join(app.config['UPLOAD_FOLDER'], f"reveal_{unique_prefix}_{filename}")
         image.save(temp_path)
         
         revealed_text = reveal_message_from_image(temp_path)
@@ -263,27 +281,60 @@ def reveal_message():
 @app.route('/api/links/create', methods=['POST'])
 def create_link():
     try:
-        data = request.json
-        if not data or 'url' not in data:
-            return jsonify({'error': 'URL is required'}), 400
+        # Check if it's form data (has file) or json
+        if request.content_type and 'multipart/form-data' in request.content_type:
+            data = request.form
+            file = request.files.get('file')
+            file_data = file.read() if file else None
+            file_name = secure_filename(file.filename) if file and file.filename else None
+        else:
+            data = request.json or {}
+            file_data = None
+            file_name = None
+
+        url = data.get('url', '')
+        if not url and not file_data:
+            return jsonify({'error': 'URL or File is required'}), 400
+            
+        expires_seconds = int(data.get('expires', 3600))
             
         result = link_manager.create_link(
-            url=data['url'],
+            url=url,
             password=data.get('password'),
-            expires_hours=int(data.get('expires', 1))
+            expires_seconds=expires_seconds,
+            file_data=file_data,
+            file_name=file_name
         )
         return jsonify(result)
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/links/access/<link_id>', methods=['POST'])
+@limiter.limit("5 per minute", error_message="Too many access attempts. Please wait a minute.")
 def access_link(link_id):
     try:
         data = request.json
-        password = data.get('password')
+        password = data.get('password') if data else None
         
         result = link_manager.access_link(link_id, password)
-        return jsonify(result)
+        
+        if result.get('file_data'):
+            # It's a file
+            file_name = result.get('file_name') or 'secure_file.dat'
+            temp_path = os.path.join(app.config['UPLOAD_FOLDER'], file_name)
+            
+            with open(temp_path, 'wb') as f:
+                f.write(result['file_data'])
+                
+            response = send_file(temp_path, as_attachment=True, download_name=file_name)
+            
+            # Note: We can't easily clean up the temp_path synchronously here after send_file,
+            # but since it's in the OS temp directory it will be cleaned up eventually.
+            return response
+            
+        else:
+            # It's just a URL
+            return jsonify({'url': result['url']})
     except Exception as e:
         return jsonify({'error': str(e)}), 400
 

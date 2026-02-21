@@ -8,15 +8,12 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# System Master Key (In prod, this should be in .env and rotated)
-# For now, we generate one if not present, ensuring this installation is unique.
 SYSTEM_MASTER_KEY = os.getenv("SYSTEM_MASTER_KEY")
 if not SYSTEM_MASTER_KEY:
-    # Fallback for dev: A fixed key to allow restart resilience in this demo
-    # In real "God Mode", this would be strictly managed.
     import logging
-    logging.warning("USING UNSAFE FALLBACK SYSTEM_MASTER_KEY. SET 'SYSTEM_MASTER_KEY' ENV VAR IN PRODUCTION.")
-    SYSTEM_MASTER_KEY = "CRYPTARIS_GOD_MODE_MASTER_KEY_V1_SECURE" 
+    logging.warning("CRITICAL SECURITY WARNING: 'SYSTEM_MASTER_KEY' ENV VAR IS NOT SET.")
+    logging.warning("Using a randomly generated volatile key. ANY PREVIOUSLY ENCRYPTED FILES OR DB LINKS WILL NOT BE DECRYPTABLE UNLESS THE ORIGINAL KEY IS RESTORED.")
+    SYSTEM_MASTER_KEY = base64.b64encode(os.urandom(32)).decode('utf-8')
 
 def derive_key(password: str, salt: bytes) -> bytes:
     """Derive a 256-bit key from the password using PBKDF2."""

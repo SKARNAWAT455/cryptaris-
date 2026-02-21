@@ -102,6 +102,24 @@ const SteganographyFeature = ({ mode }: SteganographyFeatureProps) => {
                     <div
                         className="border-2 border-dashed border-input rounded-xl p-8 text-center hover:bg-muted/50 transition-colors cursor-pointer min-h-[300px] flex flex-col items-center justify-center relative overflow-hidden"
                         onClick={() => document.getElementById("steg-upload")?.click()}
+                        onDragOver={(e) => e.preventDefault()}
+                        onDrop={(e) => {
+                            e.preventDefault();
+                            if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+                                const droppedFile = e.dataTransfer.files[0];
+                                if (!droppedFile.type.startsWith("image/")) {
+                                    toast({
+                                        title: "Invalid File Type",
+                                        description: "Steganography requires an image file.",
+                                        variant: "destructive"
+                                    });
+                                    return;
+                                }
+                                setImage(droppedFile);
+                                setProcessedImage(null);
+                                setRevealedMessage(null);
+                            }
+                        }}
                     >
                         {image ? (
                             <>

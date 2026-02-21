@@ -73,13 +73,37 @@ export async function revealMessage(image: File) {
     return response.json();
 }
 
-export async function createLink(url: string, password?: string, expires?: string) {
+export async function createLink(url?: string, password?: string, expires?: string, file?: File) {
+    let body;
+    let headers: Record<string, string> = {};
+
+    if (file) {
+        const formData = new FormData();
+        if (url) formData.append("url", url);
+        if (password) formData.append("password", password);
+        if (expires) formData.append("expires", expires);
+        formData.append("file", file);
+        body = formData;
+    } else {
+        headers["Content-Type"] = "application/json";
+        body = JSON.stringify({ url, password, expires });
+    }
+
     const response = await fetch(`${API_URL}/links/create`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url, password, expires }),
+        headers,
+        body,
     });
-    if (!response.ok) throw new Error((await response.json()).error || "Link creation failed");
+
+    if (!response.ok) {
+        let errorMsg = "Link creation failed";
+        try {
+            const errJson = await response.json();
+            if (errJson.error) errorMsg = errJson.error;
+        } catch (e) { }
+        throw new Error(errorMsg);
+    }
+
     return response.json();
 }
 
@@ -89,8 +113,36 @@ export async function accessLink(linkId: string, password?: string) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ password }),
     });
-    if (!response.ok) throw new Error((await response.json()).error || "Access failed");
-    return response.json();
+
+    if (!response.ok) {
+        let errorMsg = "Access failed";
+        try {
+            const errJson = await response.json();
+            if (errJson.error) errorMsg = errJson.error;
+        } catch (e) { }
+        throw new Error(errorMsg);
+    }
+
+    const contentType = response.headers.get("Content-Type");
+    if (contentType && contentType.includes("application/json")) {
+        return response.json();
+    } else {
+        // It's a file blob. Try to get filename from Content-Disposition if possible
+        const disposition = response.headers.get('Content-Disposition');
+        let filename = 'secure_file.dat';
+        if (disposition && disposition.indexOf('attachment') !== -1) {
+            const filenameRegex = /filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/;
+            const matches = filenameRegex.exec(disposition);
+            if (matches != null && matches[1]) {
+                filename = matches[1].replace(/['"]/g, '');
+            }
+        }
+        return {
+            isFile: true,
+            blob: await response.blob(),
+            filename
+        };
+    }
 }
 
 // AI Features

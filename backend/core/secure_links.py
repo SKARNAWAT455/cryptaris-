@@ -46,13 +46,20 @@ class SecureLinkManager:
                     created_at REAL
                 )
             ''')
+            # Add new columns for file support if they don't exist
+            try:
+                conn.execute('ALTER TABLE links ADD COLUMN file_data TEXT')
+                conn.execute('ALTER TABLE links ADD COLUMN file_name TEXT')
+            except sqlite3.OperationalError:
+                # Columns likely already exist
+                pass
             conn.commit()
         finally:
             conn.close()
 
-    def create_link(self, url: str, password: str = None, expires_hours: int = 1) -> dict:
+    def create_link(self, url: str, password: str = None, expires_seconds: int = 3600, file_data: bytes = None, file_name: str = None) -> dict:
         """
-        Creates a secure, encrypted link entry in SQLite.
+        Creates a secure, encrypted link entry in SQLite. Can Optionally contain a file.
         """
         link_id = uuid.uuid4().hex[:12] # ID for URL
         
@@ -63,23 +70,36 @@ class SecureLinkManager:
 
         # 2. Encrypt the URL
         nonce = os.urandom(12)
-        encrypted_url = self._cipher.encrypt(nonce, url.encode(), None)
+        encrypted_url = self._cipher.encrypt(nonce, url.encode() if url else b"", None)
+
+        # 2b. Encrypt File Data if present
+        encrypted_file_data = None
+        if file_data:
+            # Reusing the same nonce for simplicity since we use a different payload, but ideally different nonce
+            # Wait, AES-GCM requires unique nonces for same key. We MUST use a different nonce for the file.
+            file_nonce = os.urandom(12)
+            encrypted_file_data_bytes = self._cipher.encrypt(file_nonce, file_data, None)
+            
+            # Combine nonce and ciphertext to store in a single column
+            encrypted_file_data = base64.b64encode(file_nonce).decode('utf-8') + ":" + base64.b64encode(encrypted_file_data_bytes).decode('utf-8')
 
         # 3. Calculate Expiry
         expiry_timestamp = 0
-        if expires_hours > 0:
-            expiry_timestamp = time.time() + (expires_hours * 3600)
+        if expires_seconds > 0:
+            expiry_timestamp = time.time() + expires_seconds
         
         # 4. Store in DB
         conn = self._get_db_connection()
         try:
-            conn.execute('INSERT INTO links (id, ciphertext, nonce, password_hash, expiry, created_at) VALUES (?, ?, ?, ?, ?, ?)',
+            conn.execute('INSERT INTO links (id, ciphertext, nonce, password_hash, expiry, created_at, file_data, file_name) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
                          (link_id, 
                           base64.b64encode(encrypted_url).decode('utf-8'),
                           base64.b64encode(nonce).decode('utf-8'),
                           pwd_hash,
                           expiry_timestamp,
-                          time.time()))
+                          time.time(),
+                          encrypted_file_data,
+                          file_name))
             conn.commit()
         finally:
             conn.close()
@@ -124,8 +144,20 @@ class SecureLinkManager:
             url = decrypted_bytes.decode('utf-8')
         except Exception:
             raise ValueError("Decryption failed. Data corruption.")
+            
+        # 5. Decrypt File if present
+        file_bytes = None
+        file_name = row['file_name']
+        if row['file_data']:
+            try:
+                parts = row['file_data'].split(":")
+                file_nonce = base64.b64decode(parts[0])
+                file_ciphertext = base64.b64decode(parts[1])
+                file_bytes = self._cipher.decrypt(file_nonce, file_ciphertext, None)
+            except Exception:
+                raise ValueError("File decryption failed. Data corruption.")
 
-        return {"url": url}
+        return {"url": url, "file_data": file_bytes, "file_name": file_name}
 
     def cleanup(self):
         """Removes all expired links from DB."""

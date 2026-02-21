@@ -27,6 +27,13 @@ const titles = {
     image: "Image",
 };
 
+const fileTypes = {
+    document: ".pdf,.doc,.docx,.txt,.csv",
+    audio: "audio/*",
+    video: "video/*",
+    image: "image/*",
+};
+
 const FileFeature = ({ type, mode }: FileFeatureProps) => {
     const [file, setFile] = useState<File | null>(null);
     const [isProcessing, setIsProcessing] = useState(false);
@@ -63,7 +70,23 @@ const FileFeature = ({ type, mode }: FileFeatureProps) => {
     const handleDrop = (e: React.DragEvent) => {
         e.preventDefault();
         if (e.dataTransfer.files && e.dataTransfer.files[0]) {
-            setFile(e.dataTransfer.files[0]);
+            const droppedFile = e.dataTransfer.files[0];
+
+            // Basic validation for drop (HTML accept doesn't block drops)
+            if (mode === "encrypt") {
+                const isValidType =
+                    (type === "audio" && droppedFile.type.startsWith("audio/")) ||
+                    (type === "video" && droppedFile.type.startsWith("video/")) ||
+                    (type === "image" && droppedFile.type.startsWith("image/")) ||
+                    (type === "document" && !droppedFile.type.startsWith("audio/") && !droppedFile.type.startsWith("video/") && !droppedFile.type.startsWith("image/"));
+
+                if (!isValidType) {
+                    toast({ title: "Invalid File Type", description: `Please upload a valid ${type} file.`, variant: "destructive" });
+                    return;
+                }
+            }
+
+            setFile(droppedFile);
             setComplete(false);
             setProgress(0);
         }
@@ -137,6 +160,7 @@ const FileFeature = ({ type, mode }: FileFeatureProps) => {
                         id="file-upload"
                         type="file"
                         className="hidden"
+                        accept={mode === "encrypt" ? fileTypes[type] : ".cryptaris"}
                         onChange={handleFileChange}
                     />
                     <div className="flex flex-col items-center gap-4">
