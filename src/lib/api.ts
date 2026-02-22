@@ -179,3 +179,17 @@ export async function sendContactMessage(name: string, email: string, message: s
     if (!response.ok) throw new Error((await response.json()).error || "Failed to send message");
     return response.json();
 }
+
+export async function shredFile(file: File, passes: number) {
+    const formData = new FormData();
+    formData.append("file", file);
+    formData.append("passes", passes.toString());
+
+    const response = await fetch(`${API_URL}/tools/shred`, {
+        method: "POST",
+        body: formData,
+    });
+
+    if (!response.ok) throw new Error((await response.json()).error || "File shredding failed");
+    return response.json();
+}

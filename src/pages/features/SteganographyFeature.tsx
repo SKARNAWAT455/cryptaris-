@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { EyeOff, Eye, Upload, Image as ImageIcon, ArrowRight, Loader2, Save, X } from "lucide-react";
+import { EyeOff, Eye, Upload, Image as ImageIcon, ArrowRight, Loader2, Save, X, AlertTriangle } from "lucide-react";
 import FeatureLayout from "@/components/FeatureLayout";
 import FeatureInfo from "@/components/FeatureInfo";
 import SecurePasswordInput from "@/components/SecurePasswordInput";
@@ -99,6 +99,15 @@ const SteganographyFeature = ({ mode }: SteganographyFeatureProps) => {
         >
             <div className="grid gap-8 lg:grid-cols-2">
                 <div className="space-y-6">
+
+                    <div className="mb-4 p-4 bg-amber-500/10 border border-amber-500/20 rounded-xl text-sm flex gap-3 text-amber-600 dark:text-amber-400">
+                        <AlertTriangle className="shrink-0 mt-0.5" size={20} />
+                        <div>
+                            <p className="font-semibold mb-1">Vital Requirement for Sharing</p>
+                            <p>If you plan to send a Steganography image via WhatsApp, Telegram, or any other social medium, you <strong>MUST send it as a "Document" or "File"</strong>. Sending it as a standard gallery photo will compress the image and permanently destroy the hidden data.</p>
+                        </div>
+                    </div>
+
                     <div
                         className="border-2 border-dashed border-input rounded-xl p-8 text-center hover:bg-muted/50 transition-colors cursor-pointer min-h-[300px] flex flex-col items-center justify-center relative overflow-hidden"
                         onClick={() => document.getElementById("steg-upload")?.click()}

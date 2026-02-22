@@ -16,6 +16,7 @@ from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from core.secure_links import link_manager
 from core.contact_manager import contact_manager
+from core.shredder import shred_file
 
 app = Flask(__name__)
 # Load config from environment
@@ -363,6 +364,40 @@ def api_generate_decoy():
             
         return send_file(temp_path, as_attachment=True, download_name=filename, mimetype=result['mimetype'])
         
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/tools/shred', methods=['POST'])
+@limiter.limit("20 per minute", error_message="Too many shred attempts. Please wait.")
+def api_shred_file():
+    try:
+        if 'file' not in request.files:
+            return jsonify({'error': 'No file part'}), 400
+            
+        file = request.files['file']
+        if file.filename == '':
+            return jsonify({'error': 'No selected file'}), 400
+            
+        passes = int(request.form.get('passes', 3))
+        # Cap passes to prevent abuse
+        if passes > 10:
+            passes = 10
+            
+        # Save temp with UUID
+        unique_prefix = uuid.uuid4().hex
+        filename = secure_filename(file.filename)
+        temp_path = os.path.join(app.config['UPLOAD_FOLDER'], f"shred_{unique_prefix}_{filename}")
+        file.save(temp_path)
+        
+        # Shred the file
+        success = shred_file(temp_path, passes)
+        
+        if success:
+             return jsonify({'message': f'{filename} was successfully shredded with {passes} passes.'})
+        else:
+             return jsonify({'error': 'Failed to safely shred the file.'}), 500
+             
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 

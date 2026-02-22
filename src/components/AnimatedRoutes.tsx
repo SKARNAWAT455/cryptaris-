@@ -15,6 +15,7 @@ import FileFeature from "../pages/features/FileFeature";
 import SteganographyFeature from "../pages/features/SteganographyFeature";
 import LinkFeature from "../pages/features/LinkFeature";
 import DecoyGenerator from "../pages/features/DecoyGenerator";
+import FileShredder from "../pages/features/FileShredder";
 import PrivacyPolicy from "../pages/PrivacyPolicy";
 
 const AnimatedRoutes = () => {
@@ -48,6 +49,7 @@ const AnimatedRoutes = () => {
 
                 {/* Tools & Utils */}
                 <Route path="/tools/decoy" element={<PageTransition><DecoyGenerator /></PageTransition>} />
+                <Route path="/tools/shred" element={<PageTransition><FileShredder /></PageTransition>} />
                 <Route path="/privacy-policy" element={<PageTransition><PrivacyPolicy /></PageTransition>} />
                 <Route path="/contact" element={<PageTransition><Contact /></PageTransition>} />
                 <Route path="*" element={<PageTransition><NotFound /></PageTransition>} />
